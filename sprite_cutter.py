@@ -17,6 +17,9 @@ def detectSimpleBackground(img):
         if counts[i] > top_count:
             top_count = counts[i]
             top_id = i
+
+
+
     print("bg colour is", colours[top_id])
     print("top left colour is", img[0][0])
     return colours[top_id]
@@ -39,9 +42,25 @@ def detectSimpleBackgroundFast(img):
     right_colours = []
     for i in range(len(img)):
         right_colours.append(img[i][len(img[i])-1])
+    all_colours = []
 
+    all_colours.extend(top_colours)
+    all_colours.extend(bottom_colours)
+    all_colours.extend(left_colours)
+    all_colours.extend(right_colours)
 
-    return background_colour
+    all_colours, counts = np.unique(np.asarray(all_colours), return_counts = True, axis=0)
+
+    top_count = 0
+    top_id = 0
+    for i in range(len(counts)):
+        if counts[i] > top_count  :
+            top_id = i
+            top_count = counts[i]
+
+    print("top colour is", all_colours[top_id])
+
+    return all_colours[top_id]
 
 # Set all non-background objects to 1s, all background objects to 0s
 def maskObjects(img, background_colour):
@@ -50,9 +69,10 @@ def maskObjects(img, background_colour):
         for j in range(len(img[i])):
             if np.array_equal(img[i][j], background_colour):
                 masked_img[i][j] = 0
+                img[i][j] = [255,255,255]
             else:
                 masked_img[i][j] = 1
-    return masked_img
+    return masked_img, img
 
 # Pure Python, usable speed but over 10x greater runtime than Cython version
 def fill(data, start_coords, fill_value):
@@ -117,7 +137,7 @@ def decomposeSpriteSheet(img):
 
     #1) detect background color (sample appropriately, say from image edges), one option is with votes in a hashtable (key = r+"-"+g+"-"+b)
 
-    background_colour = detectSimpleBackground(img)
+    background_colour = detectSimpleBackgroundFast(img)
 
     if background_colour is None:
         print("Background colour was not consistent")
@@ -125,7 +145,9 @@ def decomposeSpriteSheet(img):
 
     #2) setup a mask, set all the background pixels to zero in mask within certain color distance of background, set all other mask pixels to 1.
 
-    masked_img = maskObjects(img, background_colour)
+    masked_img, bg_img = maskObjects(img, background_colour)
+
+    print("masking done")
 
     all_coordinates = []
     for i in range(len(masked_img)):
@@ -134,15 +156,12 @@ def decomposeSpriteSheet(img):
                 new_img, coords = fill(masked_img, (i, j), 5)
                 if (coords[0] - coords[2] > 10) and (coords[1] - coords[3] > 10):
                     all_coordinates.append(coords)
-                    print(coords)
-                break
 
+                break
 
     cropped_images = []
     for i in range(len(all_coordinates)):
-        print(all_coordinates[i])
-        cropped_img = img[all_coordinates[i][2]:all_coordinates[i][0], all_coordinates[i][3]:all_coordinates[i][1] ]
-
+        cropped_img = bg_img[all_coordinates[i][2]:all_coordinates[i][0], all_coordinates[i][3]:all_coordinates[i][1] ]
         cropped_images.append(cropped_img)
     return cropped_images
 
@@ -153,32 +172,36 @@ def getFns(folder_path):
         file_names.append(i)
     return file_names, folder_path
 
+def getFolders(folder_path):
+    file_names = []
+    onlyfiles = [f for f in os.listdir(folder_path) if os.path.isfile(os.path.join(folder_path, f)) is False]
+    for i in onlyfiles:
+        file_names.append(i)
+    return file_names, folder_path
+
 orig = "data/sheets/"
 output_orig = "data/sprites/"
 
+fns, output_folder = getFolders("../sprite-sheet-downloader\cleaned")
 
+for i in range(len(fns)):
+    internal_fns, fn_output = getFns(output_folder + "/" + fns[i])
+    for j in range(len(internal_fns)):
+        print("data/sprites/"  + fns[i] + "/" + internal_fns[j] )
+        img = cv2.imread(fn_output + "/" + internal_fns[j])
 
-fns = getFns(orig)
+        if img is None:
+            print("Image not found")
+            exit()
 
-for i in range(len())
+        cropped_images = decomposeSpriteSheet(img)
 
-
-img_name = "2.dcpb2k5-fccc921c-3d4e-47dc-845b-1361bb1c5fab.png"
-
-extension = img_name[:-4]
-
-
-img = cv2.imread(orig + img_name + extension)
-
-if img is None:
-    print("Image not found")
-    exit()
-
-cropped_images = decomposeSpriteSheet(img)
-try:
-    os.mkdir(output_orig + img_name)
-except FileExistsError:
-    print("Folder exists")
-
-for i in range(len(cropped_images)):
-    cv2.imwrite(output_orig + img_name + "/" + str(i) + ".png", cropped_images[i])
+        try:
+            if os.path.exists("data/sprites/" + fns[i] ) is False:
+                os.mkdir("data/sprites/" + fns[i] )
+            if os.path.exists("data/sprites/"  + fns[i]+ "/" + internal_fns[j]) is False:
+                os.mkdir("data/sprites/"  + fns[i] + "/" + internal_fns[j] )
+        except FileExistsError:
+            print("Folder exists")
+        for k in range(len(cropped_images)):
+            cv2.imwrite("data/sprites/"  + fns[i] + "/" + internal_fns[j] + "/" + str(k) + ".png", cropped_images[k])
